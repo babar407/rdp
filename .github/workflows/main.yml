@@ -1,0 +1,92 @@
+name: RDP
+on:
+  workflow_dispatch:
+
+jobs:
+  secure-rdp:
+    runs-on: windows-latest
+    timeout-minutes: 3600
+    steps:
+      - name: Create RDP User
+        env:
+          RDP_USER: RDP
+          RDP_PASS: ${{ secrets.RDP_PASSWORD }}
+        run: |
+          # Check if user exists, create if not
+          if (-not (Get-LocalUser -Name $env:RDP_USER -ErrorAction SilentlyContinue)) {
+            New-LocalUser -Name $env:RDP_USER -Password (ConvertTo-SecureString $env:RDP_PASS -AsPlainText -Force) -AccountNeverExpires -PasswordNeverExpires
+          } else {
+            Set-LocalUser -Name $env:RDP_USER -Password (ConvertTo-SecureString $env:RDP_PASS -AsPlainText -Force)
+          }
+          # Add to necessary groups for RDP access
+          Add-LocalGroupMember -Group "Administrators" -Member $env:RDP_USER
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member $env:RDP_USER
+          Enable-LocalUser -Name $env:RDP_USER[web:18]
+
+      - name: Configure RDP Settings
+        run: |
+          # Enable Remote Desktop and disable NLA for easier access
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Value 0
+          Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "SecurityLayer" -Value 0
+          # Allow RDP through firewall
+          netsh advfirewall firewall delete rule name="RDP-Tailscale" 2>$null
+          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389[web:1]
+
+      - name: Install Tailscale
+        run: |
+          # Download latest stable MSI for amd64
+          $url = "https://pkgs.tailscale.com/stable/tailscale.msi"
+          Invoke-WebRequest -Uri $url -OutFile "tailscale.msi"
+          msiexec /i tailscale.msi /qn /norestart[web:5][page:1]
+
+      - name: Authenticate Tailscale
+        run: |
+          tailscale login --authkey=${{ secrets.TALESCALE_AUTH_KEY }}[web:10][web:7]
+
+      - name: Get Tailscale IP
+        id: tsip
+        run: |
+          Write-Host "Waiting for Tailscale connection..."
+          $timeoutSeconds = 120
+          $start = Get-Date
+          do {
+            Start-Sleep -Seconds 3
+            try {
+              $status = tailscale status --json | ConvertFrom-Json
+              $self = $status.Self
+              if ($self.TailscaleIPs) {
+                $ip = $self.TailscaleIPs[0]
+                Write-Host "Tailscale IP: $ip"
+                echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
+                echo "ip=$ip" >> $GITHUB_OUTPUT
+                break
+              }
+            } catch {}
+          } until ((Get-Date) - $start).TotalSeconds -ge $timeoutSeconds)
+          if (-not $env:TAILSCALE_IP) { Write-Error "Failed to get Tailscale IP"; exit 1 }[web:1]
+
+      - name: Test RDP Port
+        run: |
+          $ip = "${{ steps.tsip.outputs.ip }}"
+          $result = Test-NetConnection -ComputerName $ip -Port 3389 -InformationLevel Quiet
+          if (-not $result) { Write-Error "RDP port not accessible"; exit 1 }
+          Write-Host "RDP ready on $ip:3389"[web:1]
+
+      - name: RDP Access Info
+        run: |
+          $ip = "$env:TAILSCALE_IP"
+          Write-Host "=== RDP SESSION ACTIVE ==="
+          Write-Host "Tailscale IP: $ip"
+          Write-Host "RDP Port: 3389"
+          Write-Host "Username: RDP"
+          Write-Host "Password: ${{ secrets.RDP_PASSWORD }}"
+          Write-Host "Connect via your RDP client to $ip`:3389"
+          Write-Host "=========================="[web:15]
+
+      - name: Keep Alive
+        run: |
+          while ($true) {
+            Write-Host "$(Get-Date) - RDP active... Cancel workflow to stop."
+            Start-Sleep 300
+          }

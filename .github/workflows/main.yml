@@ -36,7 +36,7 @@ jobs:
       - name: Install Tailscale
         run: |
           # Download latest stable MSI for amd64
-          $url = "https://pkgs.tailscale.com/stable/tailscale.msi"
+          $url = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
           Invoke-WebRequest -Uri $url -OutFile "tailscale.msi"
           msiexec /i tailscale.msi /qn /norestart
 

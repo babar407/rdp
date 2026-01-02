@@ -63,7 +63,7 @@ jobs:
                 break
               }
             } catch {}
-          } until ((Get-Date) - $start).TotalSeconds -ge $timeoutSeconds)
+          } until (((Get-Date) - $start).TotalSeconds -ge $timeoutSeconds)
           if (-not $env:TAILSCALE_IP) { Write-Error "Failed to get Tailscale IP"; exit 1 }
 
       - name: Test RDP Port

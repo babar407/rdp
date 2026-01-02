@@ -31,18 +31,18 @@ jobs:
           Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "SecurityLayer" -Value 0
           # Allow RDP through firewall
           netsh advfirewall firewall delete rule name="RDP-Tailscale" 2>$null
-          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389[web:1]
+          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
 
       - name: Install Tailscale
         run: |
           # Download latest stable MSI for amd64
           $url = "https://pkgs.tailscale.com/stable/tailscale.msi"
           Invoke-WebRequest -Uri $url -OutFile "tailscale.msi"
-          msiexec /i tailscale.msi /qn /norestart[web:5][page:1]
+          msiexec /i tailscale.msi /qn /norestart
 
       - name: Authenticate Tailscale
         run: |
-          tailscale login --authkey=${{ secrets.TALESCALE_AUTH_KEY }}[web:10][web:7]
+          tailscale login --authkey=${{ secrets.TALESCALE_AUTH_KEY }}
 
       - name: Get Tailscale IP
         id: tsip
@@ -64,14 +64,14 @@ jobs:
               }
             } catch {}
           } until ((Get-Date) - $start).TotalSeconds -ge $timeoutSeconds)
-          if (-not $env:TAILSCALE_IP) { Write-Error "Failed to get Tailscale IP"; exit 1 }[web:1]
+          if (-not $env:TAILSCALE_IP) { Write-Error "Failed to get Tailscale IP"; exit 1 }
 
       - name: Test RDP Port
         run: |
           $ip = "${{ steps.tsip.outputs.ip }}"
           $result = Test-NetConnection -ComputerName $ip -Port 3389 -InformationLevel Quiet
           if (-not $result) { Write-Error "RDP port not accessible"; exit 1 }
-          Write-Host "RDP ready on $ip:3389"[web:1]
+          Write-Host "RDP ready on $ip:3389"
 
       - name: RDP Access Info
         run: |
@@ -82,7 +82,7 @@ jobs:
           Write-Host "Username: RDP"
           Write-Host "Password: ${{ secrets.RDP_PASSWORD }}"
           Write-Host "Connect via your RDP client to $ip`:3389"
-          Write-Host "=========================="[web:15]
+          Write-Host "=========================="
 
       - name: Keep Alive
         run: |

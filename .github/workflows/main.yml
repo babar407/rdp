@@ -21,7 +21,7 @@ jobs:
           # Add to necessary groups for RDP access
           Add-LocalGroupMember -Group "Administrators" -Member $env:RDP_USER
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member $env:RDP_USER
-          Enable-LocalUser -Name $env:RDP_USER[web:18]
+          Enable-LocalUser -Name $env:RDP_USER
 
       - name: Configure RDP Settings
         run: |

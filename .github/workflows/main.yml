@@ -47,25 +47,38 @@ jobs:
       - name: Get Tailscale IP
         id: tsip
         run: |
-          Write-Host "Waiting for Tailscale connection..."
+          Write-Host "Waiting for Tailscale IP assignment..."
           $timeoutSeconds = 120
           $start = Get-Date
+          $foundIp = $null
+
           do {
-            Start-Sleep -Seconds 3
+            Start-Sleep -Seconds 5
             try {
-              $status = tailscale status --json | ConvertFrom-Json
-              $self = $status.Self
-              if ($self.TailscaleIPs) {
-                $ip = $self.TailscaleIPs[0]
-                Write-Host "Tailscale IP: $ip"
-                echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
-                echo "ip=$ip" >> $GITHUB_OUTPUT
+              # Use full path and capture status
+              $jsonStatus = & "C:\Program Files\Tailscale\tailscale.exe" status --json | ConvertFrom-Json
+              
+              # Check the 'Self' object first, then fallback to filtering peers if needed
+              if ($jsonStatus.Self.TailscaleIPs) {
+                $foundIp = $jsonStatus.Self.TailscaleIPs[0]
+              } 
+              
+              if ($foundIp) {
+                Write-Host "Success! Tailscale IP: $foundIp"
+                echo "TAILSCALE_IP=$foundIp" >> $env:GITHUB_ENV
+                echo "ip=$foundIp" >> $GITHUB_OUTPUT
                 break
               }
-            } catch {}
+            } catch {
+              Write-Host "Tailscale service still initializing..."
+            }
           } until (((Get-Date) - $start).TotalSeconds -ge $timeoutSeconds)
-          if (-not $env:TAILSCALE_IP) { Write-Error "Failed to get Tailscale IP"; exit 1 }
 
+          if (-not $foundIp) { 
+            Write-Error "Timed out waiting for Tailscale IP. Check your Auth Key and Tailnet settings."
+            exit 1 
+          }
+      
       - name: Test RDP Port
         run: |
           $ip = "${{ steps.tsip.outputs.ip }}"

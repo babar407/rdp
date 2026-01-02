@@ -42,7 +42,7 @@ jobs:
 
       - name: Authenticate Tailscale
         run: |
-          tailscale login --authkey=${{ secrets.TALESCALE_AUTH_KEY }}
+          & "C:\Program Files\Tailscale\tailscale.exe" up --authkey=${{ secrets.TALESCALE_AUTH_KEY }}
 
       - name: Get Tailscale IP
         id: tsip

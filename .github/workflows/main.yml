@@ -25,13 +25,22 @@ jobs:
 
       - name: Configure RDP Settings
         run: |
-          # Enable Remote Desktop and disable NLA for easier access
+          # Enable Remote Desktop
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          # Disable NLA and lower security layer if needed
           Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "UserAuthentication" -Value 0
           Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" -Name "SecurityLayer" -Value 0
-          # Allow RDP through firewall
+
+          # Enable built-in Remote Desktop firewall rules
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
+          # Extra explicit allow on 3389
           netsh advfirewall firewall delete rule name="RDP-Tailscale" 2>$null
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+
+          # Restart Remote Desktop service so settings apply
+          Stop-Service -Name TermService -Force
+          Start-Service -Name TermService
 
       - name: Install Tailscale
         run: |
@@ -58,7 +67,7 @@ jobs:
               # Use full path and capture status
               $jsonStatus = & "C:\Program Files\Tailscale\tailscale.exe" status --json | ConvertFrom-Json
               
-              # Check the 'Self' object first, then fallback to filtering peers if needed
+              # Check the 'Self' object first
               if ($jsonStatus.Self.TailscaleIPs) {
                 $foundIp = $jsonStatus.Self.TailscaleIPs[0]
               } 
@@ -78,12 +87,22 @@ jobs:
             Write-Error "Timed out waiting for Tailscale IP. Check your Auth Key and Tailnet settings."
             exit 1 
           }
-      
-      - name: Test RDP Port
+
+      - name: Debug RDP state
+        run: |
+          Write-Host "TAILSCALE_IP from env: $env:TAILSCALE_IP"
+          Write-Host "Listening sockets on 3389:"
+          netstat -an | findstr ":3389"
+          Write-Host "TermService status:"
+          Get-Service TermService
+          Write-Host "Local 3389 connectivity test:"
+          Test-NetConnection -ComputerName $env:COMPUTERNAME -Port 3389
+
+      - name: Test RDP Port over Tailscale
         run: |
           $ip = "${{ steps.tsip.outputs.ip }}"
           $result = Test-NetConnection -ComputerName $ip -Port 3389 -InformationLevel Quiet
-          if (-not $result) { Write-Error "RDP port not accessible"; exit 1 }
+          if (-not $result) { Write-Error "RDP port not accessible over Tailscale"; exit 1 }
           Write-Host "RDP ready on $ip:3389"
 
       - name: RDP Access Info
